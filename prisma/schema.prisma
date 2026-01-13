@@ -1,0 +1,73 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model Admin {
+    id        String   @id @default(uuid())
+    username  String   @unique
+    password  String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    role      String   @default("admin")
+}
+
+model Turs {
+    id              String            @id @default(uuid())
+    title           String
+    breakfast       Boolean
+    lunch           Boolean
+    dinner          Boolean
+    wifi            Boolean
+    transport       String
+    start_date      DateTime
+    end_date        DateTime
+    cost            Float
+    description     String
+    phone_number    String
+    messanger_id    String
+    max_seats       Int
+    photos          Photos[]
+    bookings        Bookings[]
+    additional_info additional_info[]
+}
+
+model Photos {
+    id     Int    @id @default(autoincrement())
+    url    String
+    tur_id String
+    turs   Turs   @relation(fields: [tur_id], references: [id])
+}
+
+model Bookings {
+    id           String   @id @default(uuid())
+    tur_id       String
+    full_name    String
+    phone_number String
+    seats_booked Int
+    status       String   @default("booked")
+    booking_date DateTime @default(now())
+    turs         Turs     @relation(fields: [tur_id], references: [id])
+}
+
+model Booking_history {
+    id           String   @id @default(uuid())
+    tur_id       String
+    full_name    String
+    phone_number String
+    seats_booked Int
+    booking_date DateTime
+    ended_at  DateTime @default(now())
+}
+
+model additional_info {
+    id               Int    @id @default(autoincrement())
+    info_title       String
+    info_description String
+    tur_id           String
+    turs             Turs   @relation(fields: [tur_id], references: [id])
+}
