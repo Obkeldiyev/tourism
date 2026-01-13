@@ -18,7 +18,14 @@ model Admin {
 
 model Turs {
     id              String            @id @default(uuid())
-    title           String
+    title_uz  String
+    title_ru  String
+    title_en  String
+    title_kaa String
+    description_uz  String
+    description_ru  String
+    description_en  String
+    description_kaa String
     breakfast       Boolean
     lunch           Boolean
     dinner          Boolean
@@ -27,7 +34,6 @@ model Turs {
     start_date      DateTime
     end_date        DateTime
     cost            Float
-    description     String
     phone_number    String
     messanger_id    String
     max_seats       Int
