@@ -72,8 +72,14 @@ model Booking_history {
 
 model additional_info {
     id               Int    @id @default(autoincrement())
-    info_title       String
-    info_description String
+    info_title_uz    String
+    info_description_uz String
+    info_title_en    String
+    info_description_en String
+    info_title_ru   String
+    info_description_ru String
+    info_title_kaa   String
+    info_description_kaa String
     tur_id           String
     turs             Turs   @relation(fields: [tur_id], references: [id])
 }

@@ -1,14 +1,18 @@
 import { Request, Response, NextFunction } from "express";
 import { PrismaClient } from "@prisma/client";
 import { ErrorHandler } from "@errors";
-import { TranslateService } from "../services/translate.service";
 
 const client = new PrismaClient();
 
 export class TurController {
   static async getAllTurs(req: Request, res: Response, next: NextFunction) {
     try {
-      const turs = await client.turs.findMany();
+      const turs = await client.turs.findMany({
+        include: {
+          photos: true,
+          additional_info: true,
+        },
+      });
 
       res.status(200).send({
         success: true,
@@ -34,6 +38,7 @@ export class TurController {
           id,
         },
         include: {
+          photos: true,
           additional_info: true,
           bookings: true,
         },
@@ -63,8 +68,18 @@ export class TurController {
 
   static async createTur(req: Request, res: Response, next: NextFunction) {
     try {
+      console.log('Creating tour with data:', req.body);
+      console.log('Files received:', req.files);
+      
       const {
-        title,
+        title_uz,
+        title_kaa,
+        title_ru,
+        title_en,
+        description_uz,
+        description_kaa,
+        description_ru,
+        description_en,
         breakfast,
         lunch,
         dinner,
@@ -73,76 +88,103 @@ export class TurController {
         start_date,
         end_date,
         cost,
-        description,
         phone_number,
         messanger_id,
         max_seats,
         additional_info,
       } = req.body;
 
-      // 🌍 Translate ONCE
-      const titleT = await TranslateService.translateAll(title);
-      const descT = await TranslateService.translateAll(description);
+      // ----------------- VALIDATION -----------------
+      if (
+        !title_uz ||
+        !title_kaa ||
+        !title_ru ||
+        !title_en ||
+        !description_uz ||
+        !description_kaa ||
+        !description_ru ||
+        !description_en ||
+        !transport ||
+        !start_date ||
+        !end_date
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing required fields",
+        });
+      }
 
       const newTur = await client.turs.create({
         data: {
-          title_uz: titleT.uz,
-          title_ru: titleT.ru,
-          title_en: titleT.en,
-          title_kaa: titleT.kaa,
-
-          description_uz: descT.uz,
-          description_ru: descT.ru,
-          description_en: descT.en,
-          description_kaa: descT.kaa,
-
-          breakfast,
-          lunch,
-          dinner,
-          wifi,
+          title_uz,
+          title_kaa,
+          title_ru,
+          title_en,
+          description_uz,
+          description_kaa,
+          description_ru,
+          description_en,
+          breakfast: breakfast === 'true' || breakfast === true,
+          lunch: lunch === 'true' || lunch === true,
+          dinner: dinner === 'true' || dinner === true,
+          wifi: wifi === 'true' || wifi === true,
           transport,
           start_date: new Date(start_date),
           end_date: new Date(end_date),
-          cost,
-          phone_number,
-          messanger_id,
-          max_seats,
+          cost: Number(cost) || 0,
+          phone_number: phone_number || "",
+          messanger_id: messanger_id || "",
+          max_seats: Number(max_seats) || 0,
         },
       });
 
-      // 📸 Save photos
-      if (req.files && Array.isArray(req.files)) {
-        const photosData = req.files.map((file: any) => ({
+      console.log('Tour created:', newTur);
+
+      if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+        console.log('Processing files:', req.files.length);
+        const photosData = req.files.slice(0, 15).map((file: any) => ({
           url: `/uploads/turs/${file.filename}`,
           tur_id: newTur.id,
         }));
-
         await client.photos.createMany({ data: photosData });
+        console.log('Photos created:', photosData.length);
       }
 
-      // ℹ️ Additional info (still single language — can extend later)
-      if (additional_info && additional_info.length > 0) {
-        const additionalInfoData = additional_info.map((info: any) => ({
-          info_title: info.info_title,
-          info_description: info.info_description,
-          tur_id: newTur.id,
-        }));
-
-        await client.additional_info.createMany({ data: additionalInfoData });
+      if (
+        additional_info &&
+        typeof additional_info === 'string'
+      ) {
+        try {
+          console.log('Processing additional_info:', additional_info);
+          const parsedInfo = JSON.parse(additional_info);
+          if (Array.isArray(parsedInfo) && parsedInfo.length > 0) {
+            const additionalInfoData = parsedInfo.map((info: any) => ({
+              info_title_uz: info.info_title_uz || "",
+              info_description_uz: info.info_description_uz || "",
+              info_title_kaa: info.info_title_kaa || "",
+              info_description_kaa: info.info_description_kaa || "",
+              info_title_ru: info.info_title_ru || "",
+              info_description_ru: info.info_description_ru || "",
+              info_title_en: info.info_title_en || "",
+              info_description_en: info.info_description_en || "",
+              tur_id: newTur.id,
+            }));
+            await client.additional_info.createMany({ data: additionalInfoData });
+            console.log('Additional info created:', additionalInfoData.length);
+          }
+        } catch (parseError) {
+          console.error('Error parsing additional_info:', parseError);
+        }
       }
 
-      res.status(201).send({
+      return res.status(201).json({
         success: true,
-        message: "Tur created successfully",
+        message: "Tour created successfully",
         data: newTur,
       });
     } catch (error: any) {
-      next(
-        new ErrorHandler(
-          error.message || "Internal Server Error",
-          error.status || 500
-        )
-      );
+      console.error('Error creating tour:', error);
+      next(new ErrorHandler(error.message || "Internal Server Error", 500));
     }
   }
 
@@ -150,7 +192,14 @@ export class TurController {
     try {
       const { id } = req.params;
       const {
-        title,
+        title_uz,
+        title_kaa,
+        title_ru,
+        title_en,
+        description_uz,
+        description_kaa,
+        description_ru,
+        description_en,
         breakfast,
         lunch,
         dinner,
@@ -159,7 +208,6 @@ export class TurController {
         start_date,
         end_date,
         cost,
-        description,
         phone_number,
         messanger_id,
         max_seats,
@@ -167,88 +215,77 @@ export class TurController {
       } = req.body;
 
       const checkTur = await client.turs.findUnique({ where: { id } });
-
       if (!checkTur) {
-        return res.status(404).send({
-          success: false,
-          message: "Tur not found",
-        });
+        return res
+          .status(404)
+          .json({ success: false, message: "Tur not found" });
       }
 
       const data: any = {
-        breakfast,
-        lunch,
-        dinner,
-        wifi,
-        transport,
-        cost,
-        phone_number,
-        messanger_id,
-        max_seats,
+        title_uz: title_uz || checkTur.title_uz,
+        title_kaa: title_kaa || checkTur.title_kaa,
+        title_ru: title_ru || checkTur.title_ru,
+        title_en: title_en || checkTur.title_en,
+        description_uz: description_uz || checkTur.description_uz,
+        description_kaa: description_kaa || checkTur.description_kaa,
+        description_ru: description_ru || checkTur.description_ru,
+        description_en: description_en || checkTur.description_en,
+        breakfast: breakfast !== undefined ? !!breakfast : checkTur.breakfast,
+        lunch: lunch !== undefined ? !!lunch : checkTur.lunch,
+        dinner: dinner !== undefined ? !!dinner : checkTur.dinner,
+        wifi: wifi !== undefined ? !!wifi : checkTur.wifi,
+        transport: transport || checkTur.transport,
+        start_date: start_date ? new Date(start_date) : checkTur.start_date,
+        end_date: end_date ? new Date(end_date) : checkTur.end_date,
+        cost: cost !== undefined ? Number(cost) : checkTur.cost,
+        phone_number: phone_number || checkTur.phone_number,
+        messanger_id: messanger_id || checkTur.messanger_id,
+        max_seats:
+          max_seats !== undefined ? Number(max_seats) : checkTur.max_seats,
       };
 
-      if (start_date) data.start_date = new Date(start_date);
-      if (end_date) data.end_date = new Date(end_date);
+      const tur = await client.turs.update({ where: { id }, data });
 
-      // 🌍 Translate ONLY if changed
-      if (title) {
-        const t = await TranslateService.translateAll(title);
-        data.title_uz = t.uz;
-        data.title_ru = t.ru;
-        data.title_en = t.en;
-        data.title_kaa = t.kaa;
-      }
-
-      if (description) {
-        const d = await TranslateService.translateAll(description);
-        data.description_uz = d.uz;
-        data.description_ru = d.ru;
-        data.description_en = d.en;
-        data.description_kaa = d.kaa;
-      }
-
-      const tur = await client.turs.update({
-        where: { id },
-        data,
-      });
-
-      // 🔁 Replace photos if provided
       if (req.files && Array.isArray(req.files)) {
         await client.photos.deleteMany({ where: { tur_id: id } });
-
-        const photosData = req.files.map((file: any) => ({
+        const photosData = req.files.slice(0, 15).map((file: any) => ({
           url: `/uploads/turs/${file.filename}`,
           tur_id: id,
         }));
-
         await client.photos.createMany({ data: photosData });
       }
 
-      // 🔁 Replace additional info
-      if (additional_info && additional_info.length > 0) {
-        await client.additional_info.deleteMany({ where: { tur_id: id } });
-
-        const additionalInfoData = additional_info.map((info: any) => ({
-          info_title: info.info_title,
-          info_description: info.info_description,
-          tur_id: id,
-        }));
-
-        await client.additional_info.createMany({ data: additionalInfoData });
+      if (additional_info && typeof additional_info === 'string') {
+        try {
+          const parsedInfo = JSON.parse(additional_info);
+          if (Array.isArray(parsedInfo)) {
+            await client.additional_info.deleteMany({ where: { tur_id: id } });
+            const infoData = parsedInfo.map((info: any) => ({
+              info_title_uz: info.info_title_uz || "",
+              info_description_uz: info.info_description_uz || "",
+              info_title_kaa: info.info_title_kaa || "",
+              info_description_kaa: info.info_description_kaa || "",
+              info_title_ru: info.info_title_ru || "",
+              info_description_ru: info.info_description_ru || "",
+              info_title_en: info.info_title_en || "",
+              info_description_en: info.info_description_en || "",
+              tur_id: id,
+            }));
+            await client.additional_info.createMany({ data: infoData });
+          }
+        } catch (parseError) {
+          console.error('Error parsing additional_info:', parseError);
+        }
       }
 
-      res.status(200).send({
+      return res.status(200).json({
         success: true,
         message: "Tur updated successfully",
         data: tur,
       });
     } catch (error: any) {
-      next(
-        new ErrorHandler(
-          error.message || "Internal Server Error",
-          error.status || 500
-        )
-      );
+      console.error(error);
+      next(new ErrorHandler(error.message || "Internal Server Error", 500));
     }
   }
 

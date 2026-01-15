@@ -7,7 +7,24 @@ const client = new PrismaClient();
 export class BookingController {
     static async getAllBookings(req: Request, res: Response, next: NextFunction) {
         try {
-            const bookings = await client.bookings.findMany();
+            const bookings = await client.bookings.findMany({
+                include: {
+                    turs: {
+                        select: {
+                            title_en: true,
+                            title_uz: true,
+                            title_ru: true,
+                            title_kaa: true,
+                            cost: true,
+                            start_date: true,
+                            end_date: true,
+                        }
+                    }
+                },
+                orderBy: {
+                    booking_date: 'desc'
+                }
+            });
 
             res.status(200).send({
                 success: true,
@@ -32,6 +49,19 @@ export class BookingController {
                 where: {
                     id,
                 },
+                include: {
+                    turs: {
+                        select: {
+                            title_en: true,
+                            title_uz: true,
+                            title_ru: true,
+                            title_kaa: true,
+                            cost: true,
+                            start_date: true,
+                            end_date: true,
+                        }
+                    }
+                }
             });
 
             if (booking) {
@@ -60,12 +90,47 @@ export class BookingController {
         try {
             const { tur_id, full_name, phone_number, seats_booked } = req.body;
 
+            // Validate required fields
+            if (!tur_id || !full_name || !phone_number || !seats_booked) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Missing required fields: tur_id, full_name, phone_number, seats_booked",
+                });
+            }
+
+            // Check if tour exists
+            const tour = await client.turs.findUnique({
+                where: { id: tur_id }
+            });
+
+            if (!tour) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Tour not found",
+                });
+            }
+
+            // Check if enough seats are available
+            const existingBookings = await client.bookings.findMany({
+                where: { tur_id }
+            });
+
+            const totalBookedSeats = existingBookings.reduce((sum, booking) => sum + booking.seats_booked, 0);
+            
+            if (totalBookedSeats + seats_booked > tour.max_seats) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Not enough seats available. Only ${tour.max_seats - totalBookedSeats} seats remaining.`,
+                });
+            }
+
             const booking = await client.bookings.create({
                 data: {
                     tur_id,
                     full_name,
                     phone_number,
-                    seats_booked,
+                    seats_booked: parseInt(seats_booked),
+                    status: 'booked', // Default status
                 },
             });
 
@@ -75,6 +140,7 @@ export class BookingController {
                 data: booking,
             });
         } catch (error: any) {
+            console.error('Booking creation error:', error);
             next(new ErrorHandler(error.message || "Internal Server Error", error.status || 500));
         }
     }
